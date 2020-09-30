@@ -1,0 +1,25 @@
+{
+    "issues":[
+        {
+            "id":123,
+            "subject": "do the thing",
+            "custom_fields":
+            [
+                {"value":"1.0.1","name":"Affected version","id":1},
+                {"value":"Fixed","name":"Resolution","id":2}
+            ]
+        },
+        {
+            "id":456,
+            "subject": "do the other thing",
+            "custom_fields":
+            [
+                {"value":"1.0.1","name":"Affected version","id":1},
+                {"value":"Fixed","name":"Resolution","id":2}
+            ]
+        }
+    ],
+    "total_count":2595,
+    "limit":25,
+    "offset":0
+}
