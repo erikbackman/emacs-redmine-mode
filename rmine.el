@@ -43,7 +43,7 @@
 (defun try-lookup (k alist on-nil)
   "K ALIST ON-NIL."
   (let ((val (lookup k alist)))
-    (if (eq nil val)
+    (if (nil? val)
         on-nil
       val)))
 
