@@ -3,6 +3,7 @@
         {
             "id":123,
             "subject": "do the thing",
+            "description": "some description",
             "custom_fields":
             [
                 {"value":"1.0.1","name":"Affected version","id":1},

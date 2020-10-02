@@ -23,32 +23,55 @@
 (require 'json)
 
 (defvar sample-results nil)
+
+(define-derived-mode redmine-mode org-mode "redmine")
+
 (setq sample-results (json-read-file "issues.json"))
+
+(defun nil? (x)
+  "X."
+  (eq nil x))
+
+(defun concat-newline (s1 s2)
+  "S1 S2."
+  (concat s1 "\n" s2))
 
 (defun lookup (k alist)
   "K ALIST."
   (cdr (assoc k alist)))
 
-(defun show-issue (issue)
+(defun try-lookup (k alist on-nil)
+  "K ALIST ON-NIL."
+  (let ((val (cdr (assoc k alist))))
+    (if (eq nil val)
+        on-nil
+      val)))
+
+(defun issue-as-todo (issue)
   "ISSUE."
-  (format "Issue: %s - %s"
+  (format "** TODO %s - %s\n%s"
           (lookup 'id issue)
-          (lookup 'subject issue)))
+          (lookup 'subject issue)
+          (try-lookup 'description issue "")))
 
 (defun parse-issue (issue)
   "ISSUE."
-  `((id      . ,(lookup 'id issue))
-    (subject . ,(lookup 'subject issue))))
-
-(defun format-todo-issues (issues)
-  "ISSUES."
-  (--reduce-r-from (concat (concat "** TODO " it) "\n" acc) "" issues))
+  (let ((i (lookup 'id issue))
+        (s (lookup 'subject issue))
+        (d (lookup 'description issue)))
+    (if (-any? 'nil? '(i s))
+        nil
+      `((id          . ,i)
+        (subject     . ,s)
+        (description . ,d)))))
 
 (defun format-issues (issues)
   "ISSUES."
-  (--> (lookup 'issues issues)
-       (-map #'parse-issue it)
-       (-map #'show-issue it)))
+  (--> (lookup  #'issues issues)
+       (-map    #'parse-issue it)
+       (-remove #'nil? it)
+       (-map    #'issue-as-todo it)
+       (-reduce-r #'concat-newline it)))
 
 (defun rmine-get-issues ()
   "Fetch Redmine issues and create an org buffer of todo items."
@@ -57,8 +80,8 @@
     (with-current-buffer rmine-buf
     (erase-buffer)
     (insert "* ISSUES\n")
-    (insert (format-todo-issues (format-issues sample-results)))
-    (org-mode)
+    (insert (format-issues sample-results))
+    (redmine-mode)
     (switch-to-buffer-other-window "*test*"))))
 
 (provide 'rmine)
