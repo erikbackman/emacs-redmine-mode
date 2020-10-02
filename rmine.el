@@ -82,7 +82,7 @@
     (insert "* ISSUES\n")
     (insert (format-issues sample-results))
     (redmine-mode)
-    (switch-to-buffer-other-window "*test*"))))
+    (switch-to-buffer-other-window rmine-buf))))
 
 (provide 'rmine)
 ;;; rmine.el ends here
