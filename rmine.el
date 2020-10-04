@@ -1,8 +1,6 @@
 ;;; rmine.el -*- lexical-binding: t; -*-
 ;;
-;; Copyright (C) 2020 Erik Bäckman
-;;
-;; Author: Erik Bäckman <http://github/erikbackman>
+;; Copyright (C) 2020 Erik Bäckman Author: Erik Bäckman <http://github/erikbackman>
 ;; Maintainer: Erik Bäckman
 ;; Created: September 27, 2020
 ;; Modified: September 27, 2020
@@ -60,7 +58,7 @@
 (defun parse-issue (issue)
   "ISSUE."
   (let-alist issue
-    (if (and .id .subject .description)
+    (if (and .id .subject)
         `((id          . ,.id)
           (subject     . ,.subject)
           (description . ,.description))
@@ -85,19 +83,46 @@
       (redmine-mode)
       (switch-to-buffer-other-window rmine-buf))))
 
+(defun rmine-issue-to-json-string (issue)
+  "ISSUE."
+  (format "{ \"issue\": { \"subject\": %s, \"status_id\": %s } }"
+          (plist-get issue :subject)
+          (plist-get issue :state)))
+
+;; just format and print the json structure for now
+;; TODO: post each issue
+;; PUT /issues/[id].json
+;; {
+;;   "issue": {
+;;     "subject": "Subject changed",
+;;     "notes": "The subject was changed"
+;;   }
+;; }
+(defun rmine-sync-issues ()
+  "Doc."
+  (interactive)
+  (--> (read-buffer-todos "*test*")
+       (-reduce-r-from (lambda (x z)
+                         (format "%s,\n%s" (rmine-issue-to-json-string x) z))
+                       ""
+                       it)
+       (concat "[" it "]")
+       (message "%S" it)))
+
 ;; ORG
 (defun redmine-parse-issue (issue)
   "ISSUE."
-  (let ((match
-         (car (s-match-strings-all
-               (rx "ISSUE\:"
-                   space
-                   (group (one-or-more digit))
-                   space
-                   "-"
-                   space
-                   (group (one-or-more (or word space digit))))
-               issue))))
+  (let
+      ((match
+        (car (s-match-strings-all
+              (rx "ISSUE\:"
+                  space
+                  (group (one-or-more digit))
+                  space
+                  "-"
+                  space
+                  (group (one-or-more (or word space digit))))
+              issue))))
     `(:id      ,(elt match 1)
       :subject ,(string-trim (elt match 2)))))
 
