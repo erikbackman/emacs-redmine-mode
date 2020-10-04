@@ -9,7 +9,7 @@
 ;; Version: 0.0.1
 ;; Keywords:
 ;; Homepage: https://github.com/erikbackman/rmine.el
-;; Package-Requires: ((emacs 28.0.50) (cl-lib "0.5") (dash 2.17.0) (json))
+;; Package-Requires: ((emacs 28.0.50) (cl-lib "0.5") (dash 2.17.0) (json) (org))
 ;;
 ;; This file is not part of GNU Emacs.
 ;;
@@ -21,9 +21,30 @@
 
 (require 'dash)
 (require 'json)
-(require 'rmine-org)
-(require 'rmine-util)
+(require 'cl-lib)
+(require 'org)
 
+;; UTIL
+(defun nil? (x)
+  "X."
+  (eq nil x))
+
+(defun concat-newline (s1 s2)
+  "S1 S2."
+  (concat s1 "\n" s2))
+
+(defun lookup (k alist)
+  "K ALIST."
+  (cdr (assoc k alist)))
+
+(defun try-lookup (k alist on-nil)
+  "K ALIST ON-NIL."
+  (let ((val (lookup k alist)))
+    (if (nil? val)
+        on-nil
+      val)))
+
+;; REDMINE
 (defvar sample-results nil)
 
 (define-derived-mode redmine-mode org-mode "redmine")
@@ -63,6 +84,42 @@
       (insert (format-issues sample-results))
       (redmine-mode)
       (switch-to-buffer-other-window rmine-buf))))
+
+;; ORG
+(defun redmine-parse-issue (issue)
+  "ISSUE."
+  (let ((match
+         (car (s-match-strings-all
+               (rx "ISSUE\:"
+                   space
+                   (group (one-or-more digit))
+                   space
+                   "-"
+                   space
+                   (group (one-or-more (or word space digit))))
+               issue))))
+    `(:id      ,(elt match 1)
+      :subject ,(string-trim (elt match 2)))))
+
+(defun redmine-entry-get (pom)
+  "POM."
+  (let ((e (redmine-parse-issue
+            (org-entry-get pom "ITEM")))
+
+        (s (org-entry-properties nil "TODO")))
+
+    `(:id      ,(plist-get e :id)
+      :subject ,(plist-get e :subject)
+      :state   ,(lookup "TODO" s))))
+
+(defun read-buffer-todos (buffer)
+  "BUFFER."
+  (with-current-buffer buffer
+    (let (todos)
+      (org-map-entries
+       (lambda () (push (redmine-entry-get (point)) todos))
+       nil)
+      (nreverse todos))))
 
 (provide 'rmine)
 ;;; rmine.el ends here
