@@ -21,56 +21,36 @@
 
 (require 'dash)
 (require 'json)
+(require 'rmine-org)
+(require 'rmine-util)
 
 (defvar sample-results nil)
 
 (define-derived-mode redmine-mode org-mode "redmine")
-
 (setq sample-results (json-read-file "issues.json"))
-
-(defun nil? (x)
-  "X."
-  (eq nil x))
-
-(defun concat-newline (s1 s2)
-  "S1 S2."
-  (concat s1 "\n" s2))
-
-(defun lookup (k alist)
-  "K ALIST."
-  (cdr (assoc k alist)))
-
-(defun try-lookup (k alist on-nil)
-  "K ALIST ON-NIL."
-  (let ((val (lookup k alist)))
-    (if (nil? val)
-        on-nil
-      val)))
 
 (defun issue-as-todo (issue)
   "ISSUE."
-  (format "** TODO %s - %s\n%s"
+  (format "** TODO ISSUE: %s - %s\n%s"
           (lookup 'id issue)
           (lookup 'subject issue)
           (try-lookup 'description issue "")))
 
 (defun parse-issue (issue)
   "ISSUE."
-  (let ((i (lookup 'id issue))
-        (s (lookup 'subject issue))
-        (d (lookup 'description issue)))
-    (if (-any? 'nil? '(i s))
-        nil
-      `((id          . ,i)
-        (subject     . ,s)
-        (description . ,d)))))
+  (let-alist issue
+    (if (and .id .subject .description)
+        `((id          . ,.id)
+          (subject     . ,.subject)
+          (description . ,.description))
+      nil)))
 
 (defun format-issues (issues)
   "ISSUES."
-  (--> (lookup  #'issues issues)
-       (-map    #'parse-issue it)
+  (--> (lookup 'issues issues)
+       (-map #'parse-issue it)
        (-remove #'nil? it)
-       (-map    #'issue-as-todo it)
+       (-map #'issue-as-todo it)
        (-reduce-r #'concat-newline it)))
 
 (defun rmine-get-issues ()
@@ -78,11 +58,11 @@
   (interactive)
   (let ((rmine-buf (get-buffer-create "*test*")))
     (with-current-buffer rmine-buf
-    (erase-buffer)
-    (insert "* ISSUES\n")
-    (insert (format-issues sample-results))
-    (redmine-mode)
-    (switch-to-buffer-other-window rmine-buf))))
+      (erase-buffer)
+      ;; (insert "* ISSUES\n")
+      (insert (format-issues sample-results))
+      (redmine-mode)
+      (switch-to-buffer-other-window rmine-buf))))
 
 (provide 'rmine)
 ;;; rmine.el ends here
