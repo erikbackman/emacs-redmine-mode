@@ -45,6 +45,7 @@
 ;; REDMINE
 (defvar sample-results nil)
 
+(defvar redmine-mode-map (make-sparse-keymap))
 (define-derived-mode redmine-mode org-mode "redmine")
 (setq sample-results (json-read-file "issues.json"))
 
