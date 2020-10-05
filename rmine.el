@@ -21,8 +21,18 @@
 (require 'json)
 (require 'cl-lib)
 (require 'org)
+(require 'request)
 
 ;; UTIL
+;;
+(defun trim-ws (str)
+  "STR."
+  (replace-regexp-in-string "\s" "" str))
+
+(defun ws-to-us (str)
+  "STR."
+  (replace-regexp-in-string "\s" "_" str))
+
 (defun nil? (x)
   "X."
   (eq nil x))
@@ -51,7 +61,8 @@
 
 (defun issue-as-todo (issue)
   "ISSUE."
-  (format "** TODO ISSUE: %s - %s\n%s"
+  (format "** %s #%s: %s\n%s\n"
+          (ws-to-us (upcase (lookup 'status issue)))
           (lookup 'id issue)
           (lookup 'subject issue)
           (try-lookup 'description issue "")))
@@ -61,6 +72,7 @@
   (let-alist issue
     (if (and .id .subject)
         `((id          . ,.id)
+          (status      . ,(lookup 'name .status))
           (subject     . ,.subject)
           (description . ,.description))
       nil)))
@@ -73,16 +85,6 @@
        (-map #'issue-as-todo it)
        (-reduce-r #'concat-newline it)))
 
-(defun rmine-get-issues ()
-  "Fetch Redmine issues and create an org buffer of todo items."
-  (interactive)
-  (let ((rmine-buf (get-buffer-create "*test*")))
-    (with-current-buffer rmine-buf
-      (erase-buffer)
-      ;; (insert "* ISSUES\n")
-      (insert (format-issues sample-results))
-      (redmine-mode)
-      (switch-to-buffer-other-window rmine-buf))))
 
 (defun rmine-issue-to-json-string (issue)
   "ISSUE."
@@ -90,40 +92,21 @@
           (plist-get issue :subject)
           (plist-get issue :state)))
 
-;; just format and print the json structure for now
-;; TODO: post each issue
-;; PUT /issues/[id].json
-;; {
-;;   "issue": {
-;;     "subject": "Subject changed",
-;;     "notes": "The subject was changed"
-;;   }
-;; }
-(defun rmine-sync-issues ()
-  "Doc."
-  (interactive)
-  (--> (read-buffer-todos "*test*")
-       (-reduce-r-from (lambda (x z)
-                         (format "%s,\n%s" (rmine-issue-to-json-string x) z))
-                       ""
-                       it)
-       (concat "[" it "]")
-       (message "%S" it)))
-
 ;; ORG
 (defun redmine-parse-issue (issue)
   "ISSUE."
   (let
       ((match
-        (car (s-match-strings-all
-              (rx "ISSUE\:"
-                  space
-                  (group (one-or-more digit))
-                  space
-                  "-"
-                  space
-                  (group (one-or-more (or word space digit))))
-              issue))))
+        (car
+         (s-match-strings-all
+          (rx "ISSUE\:"
+              space
+              (group (one-or-more digit))
+              space
+              "-"
+              space
+              (group (one-or-more (or word space digit))))
+          issue))))
     `(:id      ,(elt match 1)
       :subject ,(string-trim (elt match 2)))))
 
@@ -146,6 +129,72 @@
        (lambda () (push (redmine-entry-get (point)) todos))
        nil)
       (nreverse todos))))
+;; (-map #'json-encode-plist (read-buffer-todos "*test*"))
+;; (json-read-from-string "{\"id\":\"123\",\"subject\":\"do the thing\",\"state\":\"TODO\"}")
+
+;; API
+(defun get-issues ()
+  "."
+  (let (json)
+    (request
+      "http://localhost:8080/issues.json"
+      :sync t
+      :parser 'json-read
+      :headers '(("Content-Type" . "application/json"))
+      :success (cl-function
+                (lambda (&key data &allow-other-keys)
+                  (when data
+                    (setq json data)))))
+    (format-issues json)))
+
+(defun post-issue (issue)
+  "ISSUE."
+  (request
+    (concat "http://localhost:8080/issue/" (plist-get issue :id))
+    :type "PUT"
+    :sync t
+    :headers '(("Content-Type" . "application/json"))
+    :data (json-encode-plist issue)
+    :parser 'json-read
+    :success (cl-function
+              (lambda (&key data &allow-other-keys)
+                (message "I sent: %S" (assoc-default 'json data))))))
+
+
+(defun rmine-get-issues ()
+  "Fetch Redmine issues and create an org buffer of todo items."
+  (interactive)
+  (let ((rmine-buf (get-buffer-create "*test*")))
+    (with-current-buffer rmine-buf
+      (setq org-todo-keywords
+                  '((sequence "NEW" "IN_PROGRESS" "RESOLVED")))
+      (erase-buffer)
+      ;; (insert "* ISSUES\n")
+      ;; (insert "#+TODO: NEW IN_PROGRESS RESOLVED\n")
+      (insert (get-issues))
+      (redmine-mode)
+      (switch-to-buffer-other-window rmine-buf))))
+
+
+;; just format and print the json structure for now
+;; TODO: post each issue
+;; PUT /issues/[id].json
+;; {
+;;   "issue": {
+;;     "subject": "Subject changed",
+;;     "notes": "The subject was changed"
+;;   }
+;; }
+(defun rmine-sync-issues ()
+  "Doc."
+  (interactive)
+  (--> (read-buffer-todos "*test*")
+       (-reduce-r-from (lambda (x z)
+                         (format "%s,\n%s" (rmine-issue-to-json-string x) z))
+                       ""
+                       it)
+       (concat "[" it "]")
+       (message "%S" it)))
 
 (provide 'rmine)
 ;;; rmine.el ends here
