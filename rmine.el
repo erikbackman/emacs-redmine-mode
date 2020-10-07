@@ -58,20 +58,23 @@
   "S1 S2."
   (concat s1 "\n" s2))
 
+(defun lookup (k alist)
+  "K ALIST."
+  (cdr (assoc k alist)))
+
 (defun alist-try-get (k alist on-nil)
   "K ALIST ON-NIL."
   (let ((val (alist-get k alist)))
     (if val val on-nil)))
 
 ;; ORG
-
 (defun issue-as-todo (issue)
   "ISSUE."
   (format "** %s #%s: %s\n%s\n"
-          (trim-ws (alist-get 'status issue))
+          (trim-ws (upcase (alist-get 'status issue)))
           (alist-get 'id issue)
           (alist-get 'subject issue)
-          (alist-try-get 'description issue "")))
+          (try-lookup 'description issue "")))
 
 (defun redmine-parse-todo (issue)
   "ISSUE."
@@ -97,7 +100,7 @@
 
     `(:id      ,(plist-get e :id)
       :subject ,(plist-get e :subject)
-      :state   ,(alist-get "TODO" s))))
+      :state   ,(lookup "TODO" s))))
 
 (defun read-buffer-todos (buffer)
   "BUFFER."
@@ -157,7 +160,7 @@
   (let ((rmine-buf (get-buffer-create "*test*")))
     (with-current-buffer rmine-buf
       (setq org-todo-keywords
-                  '((sequence "New" "InProgress" "Resolved")))
+                  '((sequence "NEW" "INPROGRESS" "RESOLVED")))
       (erase-buffer)
       (mapc (lambda (issue)
               (insert (issue-as-todo issue))
@@ -169,9 +172,9 @@
 
 (defun issue-state-to-status-id (state)
   "STATE."
-  (cond ((equal state "New")        "1")
-        ((equal state "InProgress") "2")
-        ((equal state "Resolved")   "3")
+  (cond ((equal state "NEW")        "1")
+        ((equal state "INPROGRESS") "2")
+        ((equal state "RESOLVED")   "3")
         (t                          "1")))
 
 (defun issue-encode-for-put (issue)
