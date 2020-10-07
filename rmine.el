@@ -58,13 +58,9 @@
   "S1 S2."
   (concat s1 "\n" s2))
 
-(defun lookup (k alist)
-  "K ALIST."
-  (cdr (assoc k alist)))
-
-(defun try-lookup (k alist on-nil)
+(defun alist-try-get (k alist on-nil)
   "K ALIST ON-NIL."
-  (let ((val (lookup k alist)))
+  (let ((val (alist-get k alist)))
     (if val val on-nil)))
 
 ;; ORG
@@ -72,10 +68,10 @@
 (defun issue-as-todo (issue)
   "ISSUE."
   (format "** %s #%s: %s\n%s\n"
-          (trim-ws (lookup 'status issue))
-          (lookup 'id issue)
-          (lookup 'subject issue)
-          (try-lookup 'description issue "")))
+          (trim-ws (alist-get 'status issue))
+          (alist-get 'id issue)
+          (alist-get 'subject issue)
+          (alist-try-get 'description issue "")))
 
 (defun redmine-parse-todo (issue)
   "ISSUE."
@@ -101,7 +97,7 @@
 
     `(:id      ,(plist-get e :id)
       :subject ,(plist-get e :subject)
-      :state   ,(lookup "TODO" s))))
+      :state   ,(alist-get "TODO" s))))
 
 (defun read-buffer-todos (buffer)
   "BUFFER."
@@ -118,7 +114,7 @@
   (let-alist issue
     (if (and .id .subject)
         `((id          . ,.id)
-          (status      . ,(lookup 'name .status))
+          (status      . ,(alist-get 'name .status))
           (subject     . ,.subject)
           (description . ,.description))
       nil)))
@@ -137,7 +133,7 @@
                 (lambda (&key data &allow-other-keys)
                   (when data
                     (setq json data)))))
-    (-map #'parse-issue (lookup 'issues json))))
+    (-map #'parse-issue (alist-get 'issues json))))
 
 (defun put-issue (issue)
   "ISSUE."
