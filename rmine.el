@@ -40,6 +40,10 @@
   :group 'redmine-mode
   :type 'string)
 
+(defvar redmine-mode-map (make-sparse-keymap))
+
+(define-derived-mode redmine-mode org-mode "redmine")
+
 ;; UTIL
 ;;
 (defun trim-ws (str)
@@ -49,10 +53,6 @@
 (defun ws-to-us (str)
   "STR."
   (replace-regexp-in-string "\s" "_" str))
-
-(defun nil? (x)
-  "X."
-  (eq nil x))
 
 (defun concat-newline (s1 s2)
   "S1 S2."
@@ -65,47 +65,19 @@
 (defun try-lookup (k alist on-nil)
   "K ALIST ON-NIL."
   (let ((val (lookup k alist)))
-    (if (nil? val)
-        on-nil
-      val)))
+    (if val val on-nil)))
 
-;; REDMINE
-(defvar sample-results nil)
-
-(defvar redmine-mode-map (make-sparse-keymap))
-(define-derived-mode redmine-mode org-mode "redmine")
-(setq sample-results (json-read-file "issues.json"))
+;; ORG
 
 (defun issue-as-todo (issue)
   "ISSUE."
   (format "** %s #%s: %s\n%s\n"
-          (ws-to-us (upcase (lookup 'status issue)))
+          (trim-ws (lookup 'status issue))
           (lookup 'id issue)
           (lookup 'subject issue)
           (try-lookup 'description issue "")))
 
-(defun parse-issue (issue)
-  "ISSUE."
-  (let-alist issue
-    (if (and .id .subject)
-        `((id          . ,.id)
-          (status      . ,(lookup 'name .status))
-          (subject     . ,.subject)
-          (description . ,.description))
-      nil)))
-
-(defun format-issues (issues)
-  "ISSUES."
-  (--> (lookup 'issues issues)
-       (-map #'parse-issue it)
-       (-remove #'nil? it)
-       (-map #'issue-as-todo it)
-       (-reduce-r #'concat-newline it)))
-
-
-
-;; ORG
-(defun redmine-parse-issue (issue)
+(defun redmine-parse-todo (issue)
   "ISSUE."
   (let
       ((match
@@ -122,7 +94,7 @@
 
 (defun redmine-entry-get (pom)
   "POM."
-  (let ((e (redmine-parse-issue
+  (let ((e (redmine-parse-todo
             (org-entry-get pom "ITEM")))
 
         (s (org-entry-properties nil "TODO")))
@@ -139,15 +111,25 @@
        (lambda () (push (redmine-entry-get (point)) todos))
        nil)
       (nreverse todos))))
-;; (-map #'json-encode-plist (read-buffer-todos "*test*"))
-;; (json-read-from-string "{\"id\":\"123\",\"subject\":\"do the thing\",\"state\":\"TODO\"}")
 
 ;; API
+(defun parse-issue (issue)
+  "ISSUE."
+  (let-alist issue
+    (if (and .id .subject)
+        `((id          . ,.id)
+          (status      . ,(lookup 'name .status))
+          (subject     . ,.subject)
+          (description . ,.description))
+      nil)))
+
 (defun get-issues ()
   "."
   (let (json)
     (request
-      (format "http://%s/issues.json?key=%s" redmine-mode-hostname redmine-mode-api-key)
+      (format "http://%s/issues.json?key=%s"
+              redmine-mode-hostname
+              redmine-mode-api-key)
       :sync t
       :parser 'json-read
       :headers '(("Content-Type" . "application/json"))
@@ -155,16 +137,19 @@
                 (lambda (&key data &allow-other-keys)
                   (when data
                     (setq json data)))))
-    (format-issues json)))
+    (-map #'parse-issue (lookup 'issues json))))
 
-(defun post-issue (issue)
+(defun put-issue (issue)
   "ISSUE."
   (request
-    (format "http://%s/issues/%s.json?key=%s" redmine-mode-hostname (plist-get issue :id) redmine-mode-api-key)
+    (format "http://%s/issues/%s.json?key=%s"
+            redmine-mode-hostname
+            (plist-get issue :id)
+            redmine-mode-api-key)
     :type "PUT"
     :sync t
     :headers '(("Content-Type" . "application/json"))
-    :data (json-encode-plist (rmine-issue-to-json issue))
+    :data (issue-encode-for-put issue)
     :parser 'json-read
     :success (cl-function
               (lambda (&key data &allow-other-keys)
@@ -176,30 +161,29 @@
   (let ((rmine-buf (get-buffer-create "*test*")))
     (with-current-buffer rmine-buf
       (setq org-todo-keywords
-                  '((sequence "NEW" "IN_PROGRESS" "RESOLVED")))
+                  '((sequence "New" "InProgress" "Resolved")))
       (erase-buffer)
-      (insert (get-issues))
+      (mapc (lambda (issue)
+              (insert (issue-as-todo issue))
+              (insert "\n")
+              (forward-line))
+            (get-issues))
       (redmine-mode)
       (switch-to-buffer rmine-buf))))
 
-(defun rmine-issue-to-json-string (issue)
-  "ISSUE."
-  (format "{ \"issue\": { \"subject\": %s, \"status_id\": %s } }"
-          (plist-get issue :subject)
-          (plist-get issue :state)))
-
 (defun issue-state-to-status-id (state)
   "STATE."
-  (cond ((equal state "NEW") "1")
-        ((equal state "IN_PROGRESS") "2")
-        ((equal state "RESOLVED") "3")
-        (t "1")))
+  (cond ((equal state "New")        "1")
+        ((equal state "InProgress") "2")
+        ((equal state "Resolved")   "3")
+        (t                          "1")))
 
-(defun rmine-issue-to-json (issue)
+(defun issue-encode-for-put (issue)
   "ISSUE."
-  `(:issue
-    (:subject ,(plist-get issue :subject)
-     :status_id ,(issue-state-to-status-id (plist-get issue :state)))))
+  (json-encode-plist
+   `(:issue
+     (:subject ,(plist-get issue :subject)
+      :status_id ,(issue-state-to-status-id (plist-get issue :state))))))
 
 (defun rmine-sync-issues ()
   "Doc."
@@ -207,7 +191,7 @@
   (let ((issues (--> (read-buffer-todos "*test*")
                      (-map (lambda (x) x) it))))
 
-    (mapc (lambda (i) (post-issue i)) issues)
+    (mapc (lambda (i) (put-issue i)) issues)
   ))
 
 (provide 'rmine)
