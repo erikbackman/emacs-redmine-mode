@@ -115,7 +115,7 @@
               (group (one-or-more digit))
               "\:"
               space
-              (group (one-or-more (or word space "-" digit))))
+              (group (one-or-more (or word space alphanumeric digit))))
           issue))))
     `(:id      ,(elt match 1)
       :subject ,(string-trim (elt match 2)))))
