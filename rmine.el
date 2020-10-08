@@ -1,10 +1,7 @@
 ;;; rmine.el -*- lexical-binding: t; -*-
 ;;
 ;; Copyright (C) 2020 Erik Bäckman Author: Erik Bäckman <http://github/erikbackman>
-;; Maintainer: Erik Bäckman
-;; Created: September 27, 2020
-;; Modified: September 27, 2020
-;; Version: 0.0.1
+;; Maintainer: Erik Bäckman Created: September 27, 2020 Modified: September 27, 2020 Version: 0.0.1
 ;; Keywords:
 ;; Homepage: https://github.com/erikbackman/rmine.el
 ;; Package-Requires: ((emacs 28.0.50) (cl-lib "0.5") (dash 2.17.0) (json) (org))
@@ -22,6 +19,8 @@
 (require 'cl-lib)
 (require 'org)
 (require 'request)
+(require 'map)
+(require 'seq)
 
 ;; CONFIG
 ;;
@@ -42,7 +41,9 @@
 
 (defvar redmine-mode-map (make-sparse-keymap))
 
-(define-derived-mode redmine-mode org-mode "redmine")
+(define-derived-mode redmine-mode org-mode "redmine"
+  (setq org-todo-keywords
+        '((sequence "NEW(n)" "INPROGRESS(p)" "RESOLVED(r)"))))
 
 ;; UTIL
 ;;
@@ -62,19 +63,42 @@
   "K ALIST."
   (cdr (assoc k alist)))
 
+(defun try-lookup (k alist on-nil)
+  "K ALIST ON-NIL."
+  (if (nil? (lookup k alist))
+      on-nil
+    (lookup k alist)))
+
 (defun alist-try-get (k alist on-nil)
   "K ALIST ON-NIL."
   (let ((val (alist-get k alist)))
     (if val val on-nil)))
 
+(defun nil? (obj)
+  "OBJ."
+  (eq nil obj))
+
 ;; ORG
+;;
+(defun subtask? (issue)
+  "ISSUE."
+  (not (nil? (alist-get 'parent issue))))
+
 (defun issue-as-todo (issue)
   "ISSUE."
-  (format "** %s #%s: %s\n%s\n"
+  (format "* %s #%s: %s\n%s\n"
           (trim-ws (upcase (alist-get 'status issue)))
           (alist-get 'id issue)
           (alist-get 'subject issue)
           (try-lookup 'description issue "")))
+
+(defun issue-as-sub-todo (issue)
+  "ISSUE."
+  (format "** %s #%s: %s\n%s"
+          (trim-ws (upcase (alist-get 'status issue)))
+          (alist-get 'id issue)
+          (alist-get 'subject issue)
+          (try-lookup 'desription issue "")))
 
 (defun redmine-parse-todo (issue)
   "ISSUE."
@@ -86,7 +110,7 @@
               (group (one-or-more digit))
               "\:"
               space
-              (group (one-or-more (or word space alphanumeric digit))))
+              (group (one-or-more any)))
           issue))))
     `(:id      ,(elt match 1)
       :subject ,(string-trim (elt match 2)))))
@@ -119,7 +143,8 @@
         `((id          . ,.id)
           (status      . ,(alist-get 'name .status))
           (subject     . ,.subject)
-          (description . ,.description))
+          (description . ,.description)
+          (parent      . ,(alist-get 'id .parent)))
       nil)))
 
 (defun get-issues ()
@@ -151,24 +176,38 @@
     :data (issue-encode-for-put issue)
     :parser 'json-read
     :success (cl-function
-              (lambda (&key data &allow-other-keys)
-                (message "I sent: %S" (assoc-default 'json data))))))
+              (lambda (&key _ &allow-other-keys)
+                (message "Success")))))
 
-(defun rmine-get-issues ()
+(defun redmine-get-issues ()
   "Fetch Redmine issues and create an org buffer of todo items."
   (interactive)
-  (let ((rmine-buf (get-buffer-create "*test*")))
+  (let ((rmine-buf (get-buffer-create "*redmine-issues*")))
     (with-current-buffer rmine-buf
-      (setq org-todo-keywords
-                  '((sequence "NEW" "INPROGRESS" "RESOLVED")))
-      (erase-buffer)
-      (mapc (lambda (issue)
-              (insert (issue-as-todo issue))
-              (insert "\n")
-              (forward-line))
-            (get-issues))
-      (redmine-mode)
-      (switch-to-buffer rmine-buf))))
+      (let ((tasks) (subtasks))
+        (erase-buffer)
+        (redmine-mode)
+
+        (mapc (lambda (issue)
+                (if (subtask? issue)
+                    (push issue subtasks)
+                  (push issue tasks)))
+              (get-issues))
+
+        (mapc (lambda (issue)
+                (insert (issue-as-todo issue))
+                (insert "\n")
+                (forward-line))
+              tasks)
+
+        (mapc (lambda (issue)
+                (message "%S" (alist-get 'parent issue))
+                (org-goto--local-search-headings (concat "#" (pp (lookup 'parent issue))) nil nil)
+                (search-forward-regexp (rx bol (* blank) eol))
+                (insert (issue-as-sub-todo issue))
+                (goto-char (point-max)))
+              subtasks)
+        (switch-to-buffer rmine-buf)))))
 
 (defun issue-state-to-status-id (state)
   "STATE."
@@ -187,7 +226,7 @@
 (defun rmine-sync-issues ()
   "Doc."
   (interactive)
-  (let ((issues (--> (read-buffer-todos "*test*")
+  (let ((issues (--> (read-buffer-todos "*redmine-issues*")
                      (-map (lambda (x) x) it))))
 
     (mapc (lambda (i) (put-issue i)) issues)
