@@ -242,5 +242,5 @@
     (mapc (lambda (i) (put-issue i)) issues)
   ))
 
-(provide 'rmine)
+(provide 'redmine-mode)
 ;;; redmine-mode.el ends here
