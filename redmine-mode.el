@@ -51,6 +51,7 @@
 
 (defvar redmine-mode-map (make-sparse-keymap))
 
+;;;###autoload
 (define-derived-mode redmine-mode org-mode "redmine"
   (setq org-todo-keywords
         '((sequence "NEW(n)" "INPROGRESS(p)" "RESOLVED(r)"))))
@@ -189,6 +190,7 @@
               (lambda (&key _ &allow-other-keys)
                 (message "Success")))))
 
+;;;###autoload
 (defun redmine-get-issues ()
   "Fetch Redmine issues and create an org buffer of todo items."
   (interactive)
@@ -233,7 +235,8 @@
      (:subject ,(plist-get issue :subject)
       :status_id ,(issue-state-to-status-id (plist-get issue :state))))))
 
-(defun rmine-sync-issues ()
+;;;###autoload
+(defun redmine-sync-issues ()
   "Doc."
   (interactive)
   (let ((issues (--> (read-buffer-todos "*redmine-issues*")
