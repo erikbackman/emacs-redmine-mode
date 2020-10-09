@@ -1,16 +1,26 @@
-;;; rmine.el -*- lexical-binding: t; -*-
+;;; redmine-mode.el --- use redmine from emacs -*- lexical-binding: t; -*-
 ;;
 ;; Copyright (C) 2020 Erik Bäckman Author: Erik Bäckman <http://github/erikbackman>
-;; Maintainer: Erik Bäckman Created: September 27, 2020 Modified: September 27, 2020 Version: 0.0.1
-;; Keywords:
-;; Homepage: https://github.com/erikbackman/rmine.el
-;; Package-Requires: ((emacs 28.0.50) (cl-lib "0.5") (dash 2.17.0) (json) (org))
+;;
+;; Author: Erik Bäckman <https://github.com/erikbackman>
+;; Maintainer: Erik Bäckman <contact@ebackman.net>
+;; Created: September 27 2020
+;; Modified: September 27, 2020
+;; Version: 0.0.1
+;; Keywords: redmine
+;; Homepage: https://github.com/erikbackman/emacs-redmine-mode
+;; Package-Requires: ((emacs "25.1")
+;;                    (cl-lib "0.5")
+;;                    (dash "2.17.0")
+;;                    (json "1.5")
+;;                    (org "9.4-dev")
+;;                    (request "0.3.2"))
 ;;
 ;; This file is not part of GNU Emacs.
 ;;
 ;;; Commentary:
 ;;
-;;
+;; `redmine-mode' lets you work with redmine issues as org todo items.
 ;;
 ;;; Code:
 
@@ -233,4 +243,4 @@
   ))
 
 (provide 'rmine)
-;;; rmine.el ends here
+;;; redmine-mode.el ends here
