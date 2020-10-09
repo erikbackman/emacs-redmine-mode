@@ -1,4 +1,4 @@
-;;; redmine-mode.el --- use redmine from emacs -*- lexical-binding: t; -*-
+;;; redmine-mode.el --- use redmine from emacs
 ;;
 ;; Copyright (C) 2020 Erik Bäckman Author: Erik Bäckman <http://github/erikbackman>
 ;;
@@ -14,7 +14,8 @@
 ;;                    (dash "2.17.0")
 ;;                    (json "1.5")
 ;;                    (org "9.4-dev")
-;;                    (request "0.3.2"))
+;;                    (request "0.3.2")
+;;                    (s))
 ;;
 ;; This file is not part of GNU Emacs.
 ;;
@@ -31,6 +32,7 @@
 (require 'request)
 (require 'map)
 (require 'seq)
+(require 's)
 
 ;; CONFIG
 ;;
@@ -97,11 +99,13 @@
 
 (defun issue-as-todo (issue)
   "ISSUE."
-  (format "* %s #%s: %s\n%s\n"
+  (format "* %s #%s: %s\n%s"
           (trim-ws (upcase (alist-get 'status issue)))
           (alist-get 'id issue)
           (alist-get 'subject issue)
-          (try-lookup 'description issue "")))
+          (if-let ((desc (alist-get 'description issue)))
+              (concat desc "\n")
+            "")))
 
 (defun issue-as-sub-todo (issue)
   "ISSUE."
@@ -206,19 +210,20 @@
                   (push issue tasks)))
               (get-issues))
 
+        ;; Find a more functional way of doing this..
         (mapc (lambda (issue)
                 (insert (issue-as-todo issue))
+                ;; Find all subtasks with parent id equal to id of current issue
+                ;; and insert them below as sub-headings
+                (mapc (lambda (sub)
+                        (insert (issue-as-sub-todo sub)))
+                      (seq-filter
+                       (lambda (x) (eq (alist-get 'id issue) (alist-get 'parent x)))
+                       subtasks))
                 (insert "\n")
                 (forward-line))
               tasks)
 
-        (mapc (lambda (issue)
-                (message "%S" (alist-get 'parent issue))
-                (org-goto--local-search-headings (concat "#" (pp (lookup 'parent issue))) nil nil)
-                (search-forward-regexp (rx bol (* blank) eol))
-                (insert (issue-as-sub-todo issue))
-                (goto-char (point-max)))
-              subtasks)
         (switch-to-buffer rmine-buf)))))
 
 (defun issue-state-to-status-id (state)
@@ -242,8 +247,7 @@
   (let ((issues (--> (read-buffer-todos "*redmine-issues*")
                      (-map (lambda (x) x) it))))
 
-    (mapc (lambda (i) (put-issue i)) issues)
-  ))
+    (mapc (lambda (i) (put-issue i)) issues)))
 
 (provide 'redmine-mode)
 ;;; redmine-mode.el ends here
