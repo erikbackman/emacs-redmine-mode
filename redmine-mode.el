@@ -106,11 +106,11 @@
 
 (defun issue-as-todo (issue level)
   "ISSUE LEVEL."
-    (format (todo-pattern issue)
-            (s-join nil (-unfold (lambda (x) (unless (= x 0) (cons "*" (1- x)))) level))
-            (trim-ws (upcase (alist-get 'status issue)))
-            (alist-get 'id issue)
-            (alist-get 'subject issue)))
+  (format (todo-pattern issue)
+          (s-repeat level "*")
+          (trim-ws (upcase (alist-get 'status issue)))
+          (alist-get 'id issue)
+          (alist-get 'subject issue)))
 
 (defun redmine-parse-todo (issue)
   "ISSUE."
