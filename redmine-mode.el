@@ -97,23 +97,20 @@
   "ISSUE."
   (not (nil? (alist-get 'parent issue))))
 
-(defun issue-as-todo (issue)
+;; Inline this
+(defun todo-pattern (issue)
   "ISSUE."
-  (format "* %s #%s: %s\n%s"
-          (trim-ws (upcase (alist-get 'status issue)))
-          (alist-get 'id issue)
-          (alist-get 'subject issue)
-          (if-let ((desc (alist-get 'description issue)))
-              (concat desc "\n")
-            "")))
+  (if-let ((desc (alist-get 'description issue)))
+      (concat "%s %s #%s: %s\n" desc "\n")
+    "%s %s #%s: %s\n"))
 
-(defun issue-as-sub-todo (issue)
-  "ISSUE."
-  (format "** %s #%s: %s\n%s"
-          (trim-ws (upcase (alist-get 'status issue)))
-          (alist-get 'id issue)
-          (alist-get 'subject issue)
-          (try-lookup 'desription issue "")))
+(defun issue-as-todo (issue level)
+  "ISSUE LEVEL."
+    (format (todo-pattern issue)
+            (s-join nil (-unfold (lambda (x) (unless (= x 0) (cons "*" (1- x)))) level))
+            (trim-ws (upcase (alist-get 'status issue)))
+            (alist-get 'id issue)
+            (alist-get 'subject issue)))
 
 (defun redmine-parse-todo (issue)
   "ISSUE."
@@ -158,7 +155,7 @@
         `((id          . ,.id)
           (status      . ,(alist-get 'name .status))
           (subject     . ,.subject)
-          (description . ,.description)
+          (description . ,(if (eq "" .description) nil .description))
           (parent      . ,(alist-get 'id .parent)))
       nil)))
 
@@ -212,11 +209,11 @@
 
         ;; Find a more functional way of doing this..
         (mapc (lambda (issue)
-                (insert (issue-as-todo issue))
+                (insert (issue-as-todo issue 1))
                 ;; Find all subtasks with parent id equal to id of current issue
                 ;; and insert them below as sub-headings
                 (mapc (lambda (sub)
-                        (insert (issue-as-sub-todo sub)))
+                        (insert (issue-as-todo sub 2)))
                       (seq-filter
                        (lambda (x) (eq (alist-get 'id issue) (alist-get 'parent x)))
                        subtasks))
