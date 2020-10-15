@@ -33,6 +33,22 @@
 (require 'map)
 (require 'seq)
 (require 's)
+(require 'hierarchy)
+
+
+;; (switch-to-buffer
+;;  (hierarchy-tree-display
+;;   (build-issue-hierarchy (get-issues))
+;;   (lambda (item _)
+;;     (let ((str (alist-get 'subject item)))
+;;       (message "%S" item)
+;;       (message "%S" str)
+;;       (unless (null str)
+;;         (insert (format "%s" str))
+;;         )
+;;       )
+;;     )
+;;   ))
 
 ;; CONFIG
 ;;
@@ -191,35 +207,32 @@
               (lambda (&key _ &allow-other-keys)
                 (message "Success")))))
 
+(defun redmine--get-children (issue other)
+  "ISSUE OTHER."
+  (seq-filter
+   (lambda (i) (eq (lookup 'parent i) (lookup 'id issue)))
+   other))
+
+(defun build-issue-hierarchy (issues)
+  "ISSUES."
+  (hierarchy-from-list issues nil (lambda (x) (redmine--get-children x issues))))
+
 ;;;###autoload
 (defun redmine-get-issues ()
   "Fetch Redmine issues and create an org buffer of todo items."
   (interactive)
   (let ((rmine-buf (get-buffer-create "*redmine-issues*")))
     (with-current-buffer rmine-buf
-      (let ((tasks) (subtasks))
+      (let ((tree (build-issue-hierarchy (get-issues))))
         (erase-buffer)
         (redmine-mode)
 
-        (mapc (lambda (issue)
-                (if (subtask? issue)
-                    (push issue subtasks)
-                  (push issue tasks)))
-              (get-issues))
-
-        ;; Find a more functional way of doing this..
-        (mapc (lambda (issue)
-                (insert (issue-as-todo issue 1))
-                ;; Find all subtasks with parent id equal to id of current issue
-                ;; and insert them below as sub-headings
-                (mapc (lambda (sub)
-                        (insert (issue-as-todo sub 2)))
-                      (seq-filter
-                       (lambda (x) (eq (alist-get 'id issue) (alist-get 'parent x)))
-                       subtasks))
-                (insert "\n")
-                (forward-line))
-              tasks)
+        (hierarchy-map
+         (lambda (issue level)
+           (unless (hierarchy-has-root tree issue)
+             (insert (issue-as-todo issue level))
+             (forward-line)))
+         tree 0)
 
         (switch-to-buffer rmine-buf)))))
 
