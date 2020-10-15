@@ -215,10 +215,7 @@
 (defun redmine-sync-issues ()
   "Doc."
   (interactive)
-  (let ((issues (--> (read-buffer-todos "*redmine-issues*")
-                     (-map (lambda (x) x) it))))
-
-    (mapc (lambda (i) (put-issue i)) issues)))
+  (mapc #'put-issue (read-buffer-todos "*redmine-issues*")))
 
 (provide 'redmine-mode)
 ;;; redmine-mode.el ends here
