@@ -35,6 +35,10 @@
 (require 'seq)
 (require 's)
 (require 'hierarchy)
+(require 'redmine-mode-rest)
+(require 'redmine-mode-util)
+(require 'redmine-mode-org)
+(require 'redmine-mode-project)
 
 (defgroup redmine-mode nil
   "Redmine integration for Emacs and Org-mode"
@@ -62,109 +66,7 @@
 (define-derived-mode redmine-mode org-mode "redmine"
   (setq org-todo-keywords
         '((sequence "NEW(n)" "INPROGRESS(p)" "RESOLVED(r)")))
-  :keymap redmine-mode-map
-  )
-
-;; UTIL
-;;
-(defun trim-ws (str)
-  "STR."
-  (replace-regexp-in-string "\s" "" str))
-
-(defun lookup (k alist)
-  "K ALIST."
-  (cdr (assoc k alist)))
-
-;; ORG
-;;
-;; (defun subtask? (issue)
-;;   "ISSUE."
-;;   (not (null (alist-get 'parent issue))))
-
-;; Inline this
-(defun todo-pattern (issue)
-  "ISSUE."
-  (if-let ((desc (alist-get 'description issue)))
-      (concat "%s %s #%s: %s\n" desc "\n")
-    "%s %s #%s: %s\n"))
-
-(defun issue-as-todo (issue level)
-  "ISSUE LEVEL."
-  (format (todo-pattern issue)
-          (s-repeat level "*")
-          (trim-ws (upcase (alist-get 'status issue)))
-          (alist-get 'id issue)
-          (alist-get 'subject issue)))
-
-(defun redmine-parse-todo (issue)
-  "ISSUE."
-  (let
-      ((match
-        (car
-         (s-match-strings-all
-          (rx "\#"
-              (group (one-or-more digit))
-              "\:"
-              space
-              (group (one-or-more any)))
-          issue))))
-    `(:id      ,(elt match 1)
-      :subject ,(string-trim (elt match 2)))))
-
-(defun redmine-entry-get (pom)
-  "POM."
-  (let ((e (redmine-parse-todo
-            (org-entry-get pom "ITEM")))
-
-        (s (org-entry-properties nil "TODO")))
-
-    `(:id      ,(plist-get e :id)
-      :subject ,(plist-get e :subject)
-      :state   ,(lookup "TODO" s))))
-
-(defun read-buffer-todos (buffer)
-  "BUFFER."
-  (with-current-buffer buffer
-    (let (todos)
-      (org-map-entries
-       (lambda () (push (redmine-entry-get (point)) todos))
-       nil)
-      (nreverse todos))))
-
-;; API
-(defun parse-issue (issue)
-  "ISSUE."
-  (let-alist issue
-    (if (and .id .subject)
-        `((id          . ,.id)
-          (status      . ,(alist-get 'name .status))
-          (subject     . ,.subject)
-          (description . ,(if (eq "" .description) nil .description))
-          (parent      . ,(alist-get 'id .parent)))
-      nil)))
-
-(defun issue-encode-for-put (issue)
-  "ISSUE."
-  (json-encode-plist
-   `(:issue
-     (:subject ,(plist-get issue :subject)
-      :status_id ,(issue-state-to-status-id (plist-get issue :state))))))
-
-(defun put-issue (issue)
-  "ISSUE."
-  (request
-    (format "http://%s/issues/%s.json?key=%s"
-            redmine-mode-hostname
-            (plist-get issue :id)
-            redmine-mode-api-key)
-    :type "PUT"
-    :sync t
-    :headers '(("Content-Type" . "application/json"))
-    :data (issue-encode-for-put issue)
-    :parser 'json-read
-    :success (cl-function
-              (lambda (&key _ &allow-other-keys)
-                (message "Redmine PUT issues success")))))
+  :keymap redmine-mode-map)
 
 (defun redmine--get-children (issue other)
   "ISSUE OTHER."
@@ -176,71 +78,39 @@
   "ISSUES."
   (hierarchy-from-list issues nil (lambda (x) (redmine--get-children x issues))))
 
-(defun redmine--get-issues (id)
-  "ID."
-  (let (json)
-    (request
-      (format "http://%s/issues.json?key=%s&project_id=%s"
-              redmine-mode-hostname
-              redmine-mode-api-key
-              id)
-      :sync t
-      :parser 'json-read
-      :headers '(("Content-Type" . "application/json"))
-      :success (cl-function
-                (lambda (&key data &allow-other-keys)
-                  (when data
-                    (message "%s" "Redmine GET issues success!")
-                    (setq json data)))))
-    (-map #'parse-issue (alist-get 'issues json))))
-
-(defun redmine--current-project-dir ()
-  "."
-  (file-name-directory (buffer-file-name)))
-
-(defun redmine--dirty-issues ()
-  "."
-  (let ((filename
-         (concat (redmine--current-project-dir) ".redmine/dirty.json")))
-    (with-temp-buffer
-      (insert-file-contents filename)
-      (json-parse-buffer :object-type 'alist
-                         :array-type 'list))))
-
-(defun redmine--current-project-id ()
-  "."
-  (let ((filename
-         (concat (redmine--current-project-dir) "/.redmine/.redmine")))
-    (with-temp-buffer
-      (insert-file-contents filename)
-      (let ((id (string-trim (buffer-string))))
-        (if (string-empty-p id)
-            nil
-          t id)))))
-
 ;;;###autoload
 (defun redmine-get-issues ()
   "Fetch Redmine issues and create an org buffer of todo items."
   (interactive)
-  (let ((rmine-buf (get-buffer-create "*redmine-issues*"))
-        (project-id (redmine--current-project-id)))
+  (let ((project-id (redmine--current-project-id)))
 
     (if (null project-id)
         (message "%s: %s" "Not a redmine project!" (redmine--current-project-dir))
 
-      (with-current-buffer rmine-buf
-        (let ((tree (build-issue-hierarchy (redmine--get-issues project-id))))
-          (erase-buffer)
-          (redmine-mode)
+      (when-let ((issues (redmine--get-issues project-id
+                                              redmine-mode-hostname
+                                              redmine-mode-api-key)))
+        (let ((rmine-buf (get-buffer-create "*redmine-issues")))
+          (with-current-buffer rmine-buf
+            (let ((tree (build-issue-hierarchy issues)))
+              (erase-buffer)
+              (redmine-mode)
 
-          (hierarchy-map
-           (lambda (issue level)
-             (unless (hierarchy-has-root tree issue)
-               (insert (issue-as-todo issue level))
-               (forward-line)))
-           tree)
+              (hierarchy-map
+               (lambda (issue level)
+                 (unless (hierarchy-has-root tree issue)
+                   (insert (issue-as-todo issue level))
+                   (forward-line)))
+               tree)
 
-          (switch-to-buffer rmine-buf))))))
+              (switch-to-buffer rmine-buf))))))))
+
+(defun issue-encode-for-put (issue)
+  "ISSUE."
+  (json-encode-plist
+   `(:issue
+     (:subject ,(plist-get issue :subject)
+      :status_id ,(issue-state-to-status-id (plist-get issue :state))))))
 
 (defun issue-state-to-status-id (state)
   "STATE."
@@ -254,7 +124,9 @@
 (defun redmine-put-issues ()
   "Doc."
   (interactive)
-  (mapc #'put-issue (read-buffer-todos "*redmine-issues*")))
+  (mapc
+   (lambda (i) (put-issue (issue-encode-for-put i) redmine-mode-hostname redmine-mode-api-key))
+   (read-buffer-todos "*redmine-issues*")))
 
 (provide 'redmine-mode)
 ;;; redmine-mode.el ends here
