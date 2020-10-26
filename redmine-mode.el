@@ -51,12 +51,19 @@
   :group 'redmine-mode
   :type 'string)
 
-(defvar redmine-mode-map (make-sparse-keymap))
+(defvar redmine-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd  "C-c C-c") #'redmine-put-issues)
+    (define-key map (kbd  "C-c C-s") #'org-todo)
+    (set-keymap-parent map org-mode-map)
+    map))
 
 ;;;###autoload
 (define-derived-mode redmine-mode org-mode "redmine"
   (setq org-todo-keywords
-        '((sequence "NEW(n)" "INPROGRESS(p)" "RESOLVED(r)"))))
+        '((sequence "NEW(n)" "INPROGRESS(p)" "RESOLVED(r)")))
+  :keymap redmine-mode-map
+  )
 
 ;; UTIL
 ;;
@@ -70,9 +77,9 @@
 
 ;; ORG
 ;;
-(defun subtask? (issue)
-  "ISSUE."
-  (not (null (alist-get 'parent issue))))
+;; (defun subtask? (issue)
+;;   "ISSUE."
+;;   (not (null (alist-get 'parent issue))))
 
 ;; Inline this
 (defun todo-pattern (issue)
@@ -157,7 +164,7 @@
     :parser 'json-read
     :success (cl-function
               (lambda (&key _ &allow-other-keys)
-                (message "Success")))))
+                (message "Redmine PUT issues success")))))
 
 (defun redmine--get-children (issue other)
   "ISSUE OTHER."
@@ -169,50 +176,82 @@
   "ISSUES."
   (hierarchy-from-list issues nil (lambda (x) (redmine--get-children x issues))))
 
-(defun redmine--get-issues ()
-  "."
+(defun redmine--get-issues (id)
+  "ID."
   (let (json)
     (request
-      (format "http://%s/issues.json?key=%s"
+      (format "http://%s/issues.json?key=%s&project_id=%s"
               redmine-mode-hostname
-              redmine-mode-api-key)
+              redmine-mode-api-key
+              id)
       :sync t
       :parser 'json-read
       :headers '(("Content-Type" . "application/json"))
       :success (cl-function
                 (lambda (&key data &allow-other-keys)
                   (when data
+                    (message "%s" "Redmine GET issues success!")
                     (setq json data)))))
     (-map #'parse-issue (alist-get 'issues json))))
+
+(defun redmine--current-project-dir ()
+  "."
+  (file-name-directory (buffer-file-name)))
+
+(defun redmine--dirty-issues ()
+  "."
+  (let ((filename
+         (concat (redmine--current-project-dir) ".redmine/dirty.json")))
+    (with-temp-buffer
+      (insert-file-contents filename)
+      (json-parse-buffer :object-type 'alist
+                         :array-type 'list))))
+
+(defun redmine--current-project-id ()
+  "."
+  (let ((filename
+         (concat (redmine--current-project-dir) "/.redmine/.redmine")))
+    (with-temp-buffer
+      (insert-file-contents filename)
+      (let ((id (string-trim (buffer-string))))
+        (if (string-empty-p id)
+            nil
+          t id)))))
 
 ;;;###autoload
 (defun redmine-get-issues ()
   "Fetch Redmine issues and create an org buffer of todo items."
   (interactive)
-  (let ((rmine-buf (get-buffer-create "*redmine-issues*")))
-    (with-current-buffer rmine-buf
-      (let ((tree (build-issue-hierarchy (redmine--get-issues))))
-        (erase-buffer)
-        (redmine-mode)
+  (let ((rmine-buf (get-buffer-create "*redmine-issues*"))
+        (project-id (redmine--current-project-id)))
 
-        (hierarchy-map
-         (lambda (issue level)
-           (unless (hierarchy-has-root tree issue)
-             (insert (issue-as-todo issue level))
-             (forward-line)))
-         tree 0)
+    (if (null project-id)
+        (message "%s: %s" "Not a redmine project!" (redmine--current-project-dir))
 
-        (switch-to-buffer rmine-buf)))))
+      (with-current-buffer rmine-buf
+        (let ((tree (build-issue-hierarchy (redmine--get-issues project-id))))
+          (erase-buffer)
+          (redmine-mode)
+
+          (hierarchy-map
+           (lambda (issue level)
+             (unless (hierarchy-has-root tree issue)
+               (insert (issue-as-todo issue level))
+               (forward-line)))
+           tree)
+
+          (switch-to-buffer rmine-buf))))))
 
 (defun issue-state-to-status-id (state)
   "STATE."
-  (cond ((equal state "NEW")        "1")
-        ((equal state "INPROGRESS") "2")
-        ((equal state "RESOLVED")   "3")
-        (t                          "1")))
+  (pcase state
+    ('"NEW" "1")
+    ('"INPROGRESS" "2")
+    ('"RESOLVED" "3")
+    (_ "1")))
 
 ;;;###autoload
-(defun redmine-sync-issues ()
+(defun redmine-put-issues ()
   "Doc."
   (interactive)
   (mapc #'put-issue (read-buffer-todos "*redmine-issues*")))
